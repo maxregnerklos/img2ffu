@@ -1,26 +1,3 @@
-/*
-
-Copyright (c) 2019, Gustave Monce - gus33000.me - @gus33000
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-
-*/
 using CommandLine;
 using DiscUtils;
 using Img2Ffu.Writer;
@@ -91,14 +68,14 @@ namespace Img2Ffu
 
                 try
                 {
-                    string ExcludedPartitionNamesFilePath = o.ExcludedPartitionNamesFilePath;
+                    string excludedPartitionNamesFilePath = o.ExcludedPartitionNamesFilePath;
 
-                    if (!File.Exists(ExcludedPartitionNamesFilePath))
+                    if (!File.Exists(excludedPartitionNamesFilePath))
                     {
-                        ExcludedPartitionNamesFilePath = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), o.ExcludedPartitionNamesFilePath);
+                        excludedPartitionNamesFilePath = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), o.ExcludedPartitionNamesFilePath);
                     }
 
-                    if (!File.Exists(ExcludedPartitionNamesFilePath))
+                    if (!File.Exists(excludedPartitionNamesFilePath))
                     {
                         Logging.Log("Something happened.", Logging.LoggingLevel.Error);
                         Logging.Log("We couldn't find the provisioning partition file.", Logging.LoggingLevel.Error);
@@ -108,7 +85,7 @@ namespace Img2Ffu
                     }
 
                     // Generate FFU from the primary input file
-                    GenerateFFU(o.InputFile, o.FFUFile, o.PlatformID.Split(';'), o.SectorSize, o.BlockSize, o.AntiTheftVersion, o.OperatingSystemVersion, File.ReadAllLines(ExcludedPartitionNamesFilePath), o.MaximumNumberOfBlankBlocksAllowed, o.FlashUpdateVersion, ParseDeviceTargetInfos(o.DeviceTargetInfo));
+                    GenerateFFU(o.InputFile, o.FFUFile, o.PlatformID.Split(';'), o.SectorSize, o.BlockSize, o.AntiTheftVersion, o.OperatingSystemVersion, File.ReadAllLines(excludedPartitionNamesFilePath), o.MaximumNumberOfBlankBlocksAllowed, o.FlashUpdateVersion, ParseDeviceTargetInfos(o.DeviceTargetInfo));
 
                     // Handle porting between two FFU files if the second FFU file is specified
                     if (!string.IsNullOrEmpty(o.SecondFFUFile))
@@ -157,30 +134,30 @@ namespace Img2Ffu
                 return;
             }
 
-                    // Porting logic from source FFU to target FFU
-                    using (var sourceStream = new FileStream(sourceFFUFile, FileMode.Open, FileAccess.Read))
-                    using (var targetStream = new FileStream(targetFFUFile, FileMode.Create, FileAccess.Write))
-                    {
-                        // Read the source FFU file
-                        var sourceFFU = new FFU(sourceStream);
+            // Porting logic from source FFU to target FFU
+            using (var sourceStream = new FileStream(sourceFFUFile, FileMode.Open, FileAccess.Read))
+            using (var targetStream = new FileStream(targetFFUFile, FileMode.Create, FileAccess.Write))
+            {
+                // Read the source FFU file
+                var sourceFFU = new FFU(sourceStream);
 
-                        // Create a new FFU for the target
-                        var targetFFU = new FFU();
+                // Create a new FFU for the target
+                var targetFFU = new FFU();
 
-                        // Copy metadata from source to target
-                        targetFFU.Metadata = sourceFFU.Metadata;
+                // Copy metadata from source to target
+                targetFFU.Metadata = sourceFFU.Metadata;
 
-                        // Copy partitions from source to target
-                        foreach (var partition in sourceFFU.Partitions)
-                        {
-                            targetFFU.AddPartition(partition);
-                        }
+                // Copy partitions from source to target
+                foreach (var partition in sourceFFU.Partitions)
+                {
+                    targetFFU.AddPartition(partition);
+                }
 
-                        // Write the target FFU to the file
-                        targetFFU.WriteToStream(targetStream);
-                    }
+                // Write the target FFU to the file
+                targetFFU.WriteToStream(targetStream);
+            }
 
-                    Logging.Log($"FFU ported successfully from {sourceFFUFile} to {targetFFUFile}", Logging.LoggingLevel.Info);
+            Logging.Log($"FFU ported successfully from {sourceFFUFile} to {targetFFUFile}", Logging.LoggingLevel.Info);
             Logging.Log($"Porting data from {sourceFFUFile} to {targetFFUFile}...");
 
             // Example: Simple copy (placeholder logic)

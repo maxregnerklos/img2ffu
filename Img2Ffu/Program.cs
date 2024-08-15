@@ -16,7 +16,6 @@ namespace Img2Ffu
 {
     internal partial class Program
     {
-        // Define command line options including two FFU files
         private class Options
         {
             [Option('i', "input", Required = true, HelpText = "Input file path.")]
@@ -55,7 +54,6 @@ namespace Img2Ffu
             [Option("second-ffu", HelpText = "Path to the second FFU file for porting.")]
             public string SecondFFUFile { get; set; }
         }
-
         private static void Main(string[] args)
         {
             _ = Parser.Default.ParseArguments<Options>(args).WithParsed(o =>

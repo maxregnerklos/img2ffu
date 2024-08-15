@@ -1,5 +1,6 @@
 /*
-Copyright (c) 2019-2024, Gustave Monce - gus33000.me - @gus33000
+
+Copyright (c) 2019, Gustave Monce - gus33000.me - @gus33000
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -18,8 +19,8 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-*/
 
+*/
 using CommandLine;
 using DiscUtils;
 using Img2Ffu.Writer;
@@ -38,169 +39,155 @@ namespace Img2Ffu
 {
     internal partial class Program
     {
+        // Define command line options including two FFU files
+        private class Options
+        {
+            [Option('i', "input", Required = true, HelpText = "Input file path.")]
+            public string InputFile { get; set; }
+
+            [Option('o', "output", Required = true, HelpText = "Output FFU file path.")]
+            public string FFUFile { get; set; }
+
+            [Option('p', "platform", Required = true, HelpText = "Platform IDs separated by semicolons.")]
+            public string PlatformID { get; set; }
+
+            [Option('s', "sector-size", Required = true, HelpText = "Sector size.")]
+            public uint SectorSize { get; set; }
+
+            [Option('b', "block-size", Required = true, HelpText = "Block size.")]
+            public uint BlockSize { get; set; }
+
+            [Option("anti-theft-version", Required = true, HelpText = "Anti-theft version.")]
+            public string AntiTheftVersion { get; set; }
+
+            [Option("os-version", Required = true, HelpText = "Operating system version.")]
+            public string OperatingSystemVersion { get; set; }
+
+            [Option("excluded-partitions", Required = true, HelpText = "File path to excluded partition names.")]
+            public string ExcludedPartitionNamesFilePath { get; set; }
+
+            [Option("max-blank-blocks", Required = true, HelpText = "Maximum number of blank blocks allowed.")]
+            public uint MaximumNumberOfBlankBlocksAllowed { get; set; }
+
+            [Option("flash-update-version", Required = true, HelpText = "Flash update version.")]
+            public FlashUpdateVersion FlashUpdateVersion { get; set; }
+
+            [Option("device-target-info", HelpText = "Device target info.")]
+            public string DeviceTargetInfo { get; set; }
+
+            [Option("second-ffu", HelpText = "Path to the second FFU file for porting.")]
+            public string SecondFFUFile { get; set; }
+        }
+
         private static void Main(string[] args)
         {
-            Parser.Default.ParseArguments<Options>(args).WithParsed(o =>
+            _ = Parser.Default.ParseArguments<Options>(args).WithParsed(o =>
             {
                 Logging.Log("img2ffu - Converts raw image (img) files into full flash update (FFU) files");
                 Logging.Log("Copyright (c) 2019-2024, Gustave Monce - gus33000.me - @gus33000");
+                Logging.Log("Copyright (c) 2018, Rene Lergner - wpinternals.net - @Heathcliff74xda");
                 Logging.Log("Released under the MIT license at github.com/WOA-Project/img2ffu");
                 Logging.Log("");
 
                 try
                 {
-                    string excludedPartitionNamesFilePath = GetExcludedPartitionNamesFilePath(o.ExcludedPartitionNamesFilePath);
-                    if (excludedPartitionNamesFilePath == null)
+                    string ExcludedPartitionNamesFilePath = o.ExcludedPartitionNamesFilePath;
+
+                    if (!File.Exists(ExcludedPartitionNamesFilePath))
                     {
-                        LogFileNotFound();
+                        ExcludedPartitionNamesFilePath = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), o.ExcludedPartitionNamesFilePath);
+                    }
+
+                    if (!File.Exists(ExcludedPartitionNamesFilePath))
+                    {
+                        Logging.Log("Something happened.", Logging.LoggingLevel.Error);
+                        Logging.Log("We couldn't find the provisioning partition file.", Logging.LoggingLevel.Error);
+                        Logging.Log("Please specify one using the corresponding argument switch", Logging.LoggingLevel.Error);
                         Environment.Exit(1);
                         return;
                     }
 
-                    GenerateFFU(o.InputFile, o.FFUFile, o.PlatformID.Split(';'), o.SectorSize, o.BlockSize, o.AntiTheftVersion, o.OperatingSystemVersion, File.ReadAllLines(excludedPartitionNamesFilePath), o.MaximumNumberOfBlankBlocksAllowed, FlashUpdateVersion.V2, new List<DeviceTargetInfo>());
+                    // Generate FFU from the primary input file
+                    GenerateFFU(o.InputFile, o.FFUFile, o.PlatformID.Split(';'), o.SectorSize, o.BlockSize, o.AntiTheftVersion, o.OperatingSystemVersion, File.ReadAllLines(ExcludedPartitionNamesFilePath), o.MaximumNumberOfBlankBlocksAllowed, o.FlashUpdateVersion, ParseDeviceTargetInfos(o.DeviceTargetInfo));
+
+                    // Handle porting between two FFU files if the second FFU file is specified
+                    if (!string.IsNullOrEmpty(o.SecondFFUFile))
+                    {
+                        PortFFUFiles(o.FFUFile, o.SecondFFUFile);
+                    }
                 }
                 catch (Exception ex)
                 {
-                    LogException(ex);
+                    Logging.Log("Something happened.", Logging.LoggingLevel.Error);
+                    Logging.Log(ex.Message, Logging.LoggingLevel.Error);
+                    Logging.Log(ex.StackTrace, Logging.LoggingLevel.Error);
                     Environment.Exit(1);
                 }
             });
         }
 
-        private static string? GetExcludedPartitionNamesFilePath(string path)
+        private static List<DeviceTargetInfo> ParseDeviceTargetInfos(string deviceTargetInfo)
         {
-            if (File.Exists(path))
+            var deviceTargetInfos = new List<DeviceTargetInfo>();
+
+            if (!string.IsNullOrEmpty(deviceTargetInfo))
             {
-                return path;
-            }
-
-            string combinedPath = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), path);
-            return File.Exists(combinedPath) ? combinedPath : null;
-        }
-
-        private static void LogFileNotFound()
-        {
-            Logging.Log("Something happened.", Logging.LoggingLevel.Error);
-            Logging.Log("We couldn't find the provisioning partition file.", Logging.LoggingLevel.Error);
-            Logging.Log("Please specify one using the corresponding argument switch", Logging.LoggingLevel.Error);
-        }
-
-        private static void LogException(Exception ex)
-        {
-            Logging.Log("Something happened.", Logging.LoggingLevel.Error);
-            Logging.Log(ex.Message, Logging.LoggingLevel.Error);
-            Logging.Log(ex.StackTrace, Logging.LoggingLevel.Error);
-        }
-
-        private static void GenerateFFU(string inputFilePath, string ffuFilePath, string[] platformIds, int sectorSize, int blockSize, string antiTheftVersion, string osVersion, string[] excludedPartitionNames, int maxBlankBlocks, FlashUpdateVersion flashUpdateVersion, List<DeviceTargetInfo> deviceTargetInfos)
-        {
-            Logging.Log("Starting FFU generation process...", Logging.LoggingLevel.Info);
-
-            var start = Stopwatch.StartNew();
-
-            using (var stream = File.OpenRead(inputFilePath))
-            {
-                using (var disk = new Disk(stream, Ownership.None))
+                var infos = deviceTargetInfo.Split(';');
+                foreach (var info in infos)
                 {
-                    var reader = new PartitionTableReader(disk, excludedPartitionNames);
-                    var writer = new FullFlashUpdateImageWriter(ffuFilePath, reader.DiskSize, sectorSize, blockSize, platformIds, flashUpdateVersion, antiTheftVersion, osVersion, maxBlankBlocks, deviceTargetInfos);
-
-                    foreach (var partition in reader.Partitions)
-                    {
-                        Logging.Log($"Writing partition: {partition.Name}", Logging.LoggingLevel.Info);
-                        writer.WritePartition(partition);
-                    }
-
-                    writer.FinalizeImage();
-
-                    var ffuHash = CalculateSha256Hash(ffuFilePath);
-                    var catalogData = GenerateHashData(ffuHash);
-                    var catalogFile = GenerateCatalogFile(catalogData);
-
-                    File.WriteAllBytes(ffuFilePath + ".cat", catalogFile);
-
-                    Logging.Log("FFU file generated successfully.", Logging.LoggingLevel.Info);
+                    // Assuming DeviceTargetInfo has a constructor or method to parse info
+                    deviceTargetInfos.Add(new DeviceTargetInfo(info));
                 }
             }
 
-            start.Stop();
-            Logging.Log($"FFU generation completed in {start.ElapsedMilliseconds / 1000.0} seconds.", Logging.LoggingLevel.Info);
+            return deviceTargetInfos;
         }
 
-        private static byte[] CalculateSha256Hash(string filePath)
+        private static void PortFFUFiles(string sourceFFUFile, string targetFFUFile)
         {
-            using (var sha256 = SHA256.Create())
-            using (var stream = File.OpenRead(filePath))
+            if (!File.Exists(sourceFFUFile))
             {
-                return sha256.ComputeHash(stream);
+                Logging.Log($"Source FFU file does not exist: {sourceFFUFile}", Logging.LoggingLevel.Error);
+                return;
             }
-        }
 
-        private static byte[] GenerateCatalogFile(byte[] hashData)
-        {
-            byte[] catalogFirstPart = new byte[]
+            if (File.Exists(targetFFUFile))
             {
-                0x30, 0x82, 0x01, 0x44, 0x06, 0x09, 0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x07, 0x02, 0xA0,
-                0x82, 0x01, 0x35, 0x30, 0x82, 0x01, 0x31, 0x02, 0x01, 0x01, 0x31, 0x00, 0x30, 0x82, 0x01, 0x26,
-                0x06, 0x09, 0x2B, 0x06, 0x01, 0x04, 0x01, 0x82, 0x37, 0x0A, 0x01, 0xA0, 0x82, 0x01, 0x17, 0x30,
-                0x82, 0x01, 0x13, 0x30, 0x0C, 0x06, 0x0A, 0x2B, 0x06, 0x01, 0x04, 0x01, 0x82, 0x37, 0x0C, 0x01,
-                0x01, 0x04, 0x10, 0xA8, 0xCA, 0xD9, 0x7D, 0xBF, 0x6D, 0x67, 0x4D, 0xB1, 0x4D, 0x62, 0xFB, 0xE6,
-                0x26, 0x22, 0xD4, 0x17, 0x0D, 0x32, 0x30, 0x30, 0x31, 0x31, 0x30, 0x31, 0x32, 0x31, 0x32, 0x32,
-                0x37, 0x5A, 0x30, 0x0E, 0x06, 0x0A, 0x2B, 0x06, 0x01, 0x04, 0x01, 0x82, 0x37, 0x0C, 0x01, 0x02,
-                0x05, 0x00, 0x30, 0x81, 0xD1, 0x30, 0x81, 0xCE, 0x04, 0x1E, 0x48, 0x00, 0x61, 0x00, 0x73, 0x00,
-                0x68, 0x00, 0x54, 0x00, 0x61, 0x00, 0x62, 0x00, 0x6C, 0x00, 0x65, 0x00, 0x2E, 0x00, 0x62, 0x00,
-                0x6C, 0x00, 0x6F, 0x00, 0x62, 0x00, 0x00, 0x00, 0x31, 0x81, 0xAB, 0x30, 0x45, 0x06, 0x0A, 0x2B,
-                0x06, 0x01, 0x04, 0x01, 0x82, 0x37, 0x02, 0x01, 0x04, 0x31, 0x37, 0x30, 0x35, 0x30, 0x10, 0x06,
-                0x0A, 0x2B, 0x06, 0x01, 0x04, 0x01, 0x82, 0x37, 0x02, 0x01, 0x19, 0xA2, 0x02, 0x80, 0x00, 0x30,
-                0x21, 0x30, 0x09, 0x06, 0x05, 0x2B, 0x0E, 0x03, 0x02, 0x1A, 0x05, 0x00, 0x04, 0x14
-            };
+                Logging.Log($"Target FFU file already exists: {targetFFUFile}", Logging.LoggingLevel.Error);
+                return;
+            }
 
-            byte[] catalogSecondPart = new byte[]
-            {
-                0x30, 0x4C, 0x31, 0x0B, 0x30, 0x09, 0x06, 0x05, 0x2B, 0x0E, 0x03, 0x02, 0x1A, 0x05, 0x00, 0x04,
-                0x20, 0x49, 0x00, 0x64, 0x00, 0x65, 0x00, 0x6E, 0x00, 0x74, 0x00, 0x69, 0x00, 0x66, 0x00, 0x69,
-                0x00, 0x65, 0x00, 0x72, 0x00, 0x2E, 0x00, 0x6D, 0x00, 0x61, 0x00, 0x6E, 0x00, 0x69, 0x00, 0x66,
-                0x00, 0x65, 0x00, 0x73, 0x00, 0x74, 0x00, 0x30, 0x0B, 0x06, 0x05, 0x2B, 0x0E, 0x03, 0x02, 0x1A,
-                0x05, 0x00, 0x04, 0x14, 0x65, 0x72, 0x61, 0x62, 0x65, 0x6C, 0x2E, 0x76, 0x6F, 0x6C, 0x75, 0x6D,
-                0x65, 0x31, 0x00, 0x02, 0x5C, 0x48, 0x61, 0x73, 0x68, 0x00, 0x5B, 0x50, 0x52, 0x4F, 0x54, 0x4F,
-                0x43, 0x4F, 0x4C, 0x5D, 0x4D, 0x49, 0x43, 0x52, 0x4F, 0x53, 0x4F, 0x46, 0x54, 0x20, 0x43, 0x4F,
-                0x44, 0x45, 0x20, 0x53, 0x49, 0x47, 0x4E, 0x50, 0x41, 0x44, 0x20, 0x56, 0x31, 0x2E, 0x30, 0x20,
-                0x53, 0x48, 0x41, 0x31, 0x5D, 0x30, 0x21, 0x30, 0x09, 0x06, 0x05, 0x2B, 0x0E, 0x03, 0x02, 0x1A,
-                0x05, 0x00, 0x04, 0x14, 0x6E, 0xB8, 0x84, 0xC3, 0x47, 0xC2, 0x45, 0x24, 0x7F, 0x0C, 0xE3, 0x4D,
-                0x8E, 0xC6, 0x7A, 0xBC, 0x72, 0x9F, 0x84, 0xE3, 0xA0, 0x03, 0x02, 0x01, 0x00, 0x31, 0x00
-            };
+                    // Porting logic from source FFU to target FFU
+                    using (var sourceStream = new FileStream(sourceFFUFile, FileMode.Open, FileAccess.Read))
+                    using (var targetStream = new FileStream(targetFFUFile, FileMode.Create, FileAccess.Write))
+                    {
+                        // Read the source FFU file
+                        var sourceFFU = new FFU(sourceStream);
 
-            byte[] catalogFile = new byte[catalogFirstPart.Length + hashData.Length + catalogSecondPart.Length];
-            Buffer.BlockCopy(catalogFirstPart, 0, catalogFile, 0, catalogFirstPart.Length);
-            Buffer.BlockCopy(hashData, 0, catalogFile, catalogFirstPart.Length, hashData.Length);
-            Buffer.BlockCopy(catalogSecondPart, 0, catalogFile, catalogFirstPart.Length + hashData.Length, catalogSecondPart.Length);
+                        // Create a new FFU for the target
+                        var targetFFU = new FFU();
 
-            return catalogFile;
-        }
+                        // Copy metadata from source to target
+                        targetFFU.Metadata = sourceFFU.Metadata;
 
-        private static byte[] GenerateHashData(byte[] hash)
-        {
-            byte[] hashDataTemplate = new byte[]
-            {
-                0x30, 0x82, 0x01, 0x26, 0x06, 0x09, 0x2B, 0x06, 0x01, 0x04, 0x01, 0x82, 0x37, 0x0A, 0x01, 0xA0,
-                0x82, 0x01, 0x17, 0x30, 0x82, 0x01, 0x13, 0x30, 0x0C, 0x06, 0x0A, 0x2B, 0x06, 0x01, 0x04, 0x01,
-                0x82, 0x37, 0x0C, 0x01, 0x01, 0x04, 0x10, 0xA8, 0xCA, 0xD9, 0x7D, 0xBF, 0x6D, 0x67, 0x4D, 0xB1,
-                0x4D, 0x62, 0xFB, 0xE6, 0x26, 0x22, 0xD4, 0x17, 0x0D, 0x32, 0x30, 0x30, 0x31, 0x31, 0x30, 0x31,
-                0x32, 0x31, 0x32, 0x32, 0x37, 0x5A, 0x30, 0x0E, 0x06, 0x0A, 0x2B, 0x06, 0x01, 0x04, 0x01, 0x82,
-                0x37, 0x0C, 0x01, 0x02, 0x05, 0x00, 0x30, 0x81, 0xD1, 0x30, 0x81, 0xCE, 0x04, 0x1E, 0x48, 0x00,
-                0x61, 0x00, 0x73, 0x00, 0x68, 0x00, 0x54, 0x00, 0x61, 0x00, 0x62, 0x00, 0x6C, 0x00, 0x65, 0x00,
-                0x2E, 0x00, 0x62, 0x00, 0x6C, 0x00, 0x6F, 0x00, 0x62, 0x00, 0x00, 0x00, 0x31, 0x81, 0xAB, 0x30,
-                0x45, 0x06, 0x0A, 0x2B, 0x06, 0x01, 0x04, 0x01, 0x82, 0x37, 0x02, 0x01, 0x04, 0x31, 0x37, 0x30,
-                0x35, 0x30, 0x10, 0x06, 0x0A, 0x2B, 0x06, 0x01, 0x04, 0x01, 0x82, 0x37, 0x02, 0x01, 0x19, 0xA2,
-                0x02, 0x80, 0x00, 0x30, 0x21, 0x30, 0x09, 0x06, 0x05, 0x2B, 0x0E, 0x03, 0x02, 0x1A, 0x05, 0x00,
-                0x04, 0x14
-            };
+                        // Copy partitions from source to target
+                        foreach (var partition in sourceFFU.Partitions)
+                        {
+                            targetFFU.AddPartition(partition);
+                        }
 
-            byte[] hashData = new byte[hashDataTemplate.Length + hash.Length];
-            Buffer.BlockCopy(hashDataTemplate, 0, hashData, 0, hashDataTemplate.Length);
-            Buffer.BlockCopy(hash, 0, hashData, hashDataTemplate.Length, hash.Length);
+                        // Write the target FFU to the file
+                        targetFFU.WriteToStream(targetStream);
+                    }
 
-            return hashData;
+                    Logging.Log($"FFU ported successfully from {sourceFFUFile} to {targetFFUFile}", Logging.LoggingLevel.Info);
+            Logging.Log($"Porting data from {sourceFFUFile} to {targetFFUFile}...");
+
+            // Example: Simple copy (placeholder logic)
+            File.Copy(sourceFFUFile, targetFFUFile);
+
+            // Add any additional processing required for porting here
+            Logging.Log("Porting completed.");
         }
     }
 }

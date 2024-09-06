@@ -34,8 +34,7 @@ jobs:
           dotnet-version: "8.0.x"
 
       - name: Add MSBuild to PATH
-        # Update or replace microsoft/setup-msbuild if possible.
-        uses: microsoft/setup-msbuild@v1.3.1  # Check for updates or alternative setup.
+        uses: microsoft/setup-msbuild@v1.3.1
 
       - name: Build utilities
         shell: pwsh
@@ -45,6 +44,7 @@ jobs:
 
       - name: Create PDB Output Directory
         shell: pwsh
+        continue-on-error: true
         run: |
           mkdir ${{ github.workspace }}\artifacts\${{ matrix.platform }}-${{ matrix.architecture }}\PDBs
 
@@ -55,13 +55,13 @@ jobs:
           move ${{ github.workspace }}\artifacts\${{ matrix.platform }}-${{ matrix.architecture }}\*.pdb ${{ github.workspace }}\artifacts\${{ matrix.platform }}-${{ matrix.architecture }}\PDBs\
 
       - name: Upload artifact (Binaries)
-        uses: actions/upload-artifact@v3.2.0  # Updated to a Node 20 compatible version.
+        uses: actions/upload-artifact@v3.2.0
         with:
           name: ${{ matrix.platform }}-${{ matrix.architecture }}-binaries
           path: ${{ github.workspace }}/artifacts/${{ matrix.platform }}-${{ matrix.architecture }}
 
       - name: Upload artifact (Symbols)
-        uses: actions/upload-artifact@v3.2.0  # Updated to a Node 20 compatible version.
+        uses: actions/upload-artifact@v3.2.0
         with:
           name: ${{ matrix.platform }}-${{ matrix.architecture }}-symbols
           path: ${{ github.workspace }}/artifacts/${{ matrix.platform }}-${{ matrix.architecture }}\PDBs
